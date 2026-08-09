@@ -20,7 +20,7 @@ Candy is a standalone Windows frontend for `yt-dlp` and `FFmpeg`. It abstracts c
 ## Screenshots
 
 <img src="https://github.com/user-attachments/assets/f9b2bfab-b4b9-48fc-a16c-381976245c4c" width="400"/>
-<img src="https://github.com/user-attachments/assets/a1ed7f17-3070-4cde-8828-f9c0d0b0dbde" width="400"/>
+<img src="https://github.com/user-attachments/assets/da0f4b27-8d75-419e-90b5-8faa4cfd87c4" width="400" />
 
 
 
