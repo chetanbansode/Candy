@@ -13,7 +13,6 @@ Candy is a standalone Windows frontend for `yt-dlp` and `FFmpeg`. It abstracts c
 ## Features
 
 - **Format Parsing**: Automatically fetches and categorizes all available video and audio streams for a given URL.
-- **Custom Remuxing**: Combines high-resolution video tracks (e.g., 4K WebM) with separate audio tracks into standard `.mp4` or `.mkv` containers.
 - **Native Fluent UI**: Built using Windows Presentation Foundation (WPF) with `WPF UI`, supporting native system themes (Light/Dark) and Mica backdrops on Windows 11.
 - **Metadata Support**: Optional embedding of creator subtitles and stream metadata directly into the output file.
 
