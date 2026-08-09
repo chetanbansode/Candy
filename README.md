@@ -34,7 +34,7 @@ End-users can download the pre-compiled installer:
 
 ## Building from Source
 
-To compile the application and its installer from source, you will need the [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download).
+To compile the application from source, you will need the [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download).
 
 ### 1. Build the Executable
 
