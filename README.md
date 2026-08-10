@@ -16,7 +16,7 @@ Candy is a standalone Windows frontend for `yt-dlp` and `FFmpeg`. It abstracts c
 - **Native Fluent UI**: Built using Windows Presentation Foundation (WPF) with `WPF UI`, supporting native system themes (Light/Dark) and Mica backdrops on Windows 11.
 - **Metadata Support**: Optional embedding of creator subtitles and stream metadata directly into the output file.
 
-> **Note**: If you need more advanced controls and features, you can use [Candy Plus](https://github.com/chetanbansode/Candy-Plus)
+> **Note**: If you need more advanced controls and features, you can use [Candy Plus](https://github.com/chetanbansode/Candy-Plus
 
 ## Screenshots
 
@@ -35,7 +35,7 @@ End-users can download the pre-compiled installer:
 
 ## Building from Source
 
-To compile the application from source, you will need the [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download).
+To compile the application from source, you will need the [.NET 8.0 SDK](https://dotnet.microsoft.com/en-us/download)
 
 ### 1. Build the Executable
 
@@ -50,7 +50,7 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 Candy relies on external binaries that are **not** bundled in this source repository due to their size. Before compiling the Windows Installer, you must acquire these binaries manually:
 
 1. Download the latest `yt-dlp.exe` from [yt-dlp releases](https://github.com/yt-dlp/yt-dlp/releases).
-2. Download the latest `ffmpeg.exe` and `ffprobe.exe` from [FFmpeg Windows builds](https://ffmpeg.org/download.html).
+2. Download the latest `ffmpeg.exe` and `ffprobe.exe` from [FFmpeg Windows builds](https://ffmpeg.org/download.html)
 3. Place all three `.exe` files into the following directory:
    `bin\Release\net8.0-windows\win-x64\publish\`
 
@@ -68,4 +68,4 @@ Candy is a graphical wrapper. All core downloading and media processing capabili
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE)
