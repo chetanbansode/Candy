@@ -16,6 +16,8 @@ Candy is a standalone Windows frontend for `yt-dlp` and `FFmpeg`. It abstracts c
 - **Native Fluent UI**: Built using Windows Presentation Foundation (WPF) with `WPF UI`, supporting native system themes (Light/Dark) and Mica backdrops on Windows 11.
 - **Metadata Support**: Optional embedding of creator subtitles and stream metadata directly into the output file.
 
+> **Note**: If you need more advanced controls and features, you can use [Candy Plus](https://github.com/chetanbansode/Candy-Plus).
+
 ## Screenshots
 
 <img src="https://github.com/user-attachments/assets/f9b2bfab-b4b9-48fc-a16c-381976245c4c" width="400"/> &nbsp;&nbsp;
