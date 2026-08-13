@@ -9,4 +9,7 @@ public class VideoFormatOption
     public int Fps { get; set; }                                 // 30, 60
     public string Codec { get; set; } = string.Empty;           // raw vcodec string e.g. "avc1.640028"
     public double Bitrate { get; set; }                          // kbps (tbr or vbr)
+    
+    public long FileSize { get; set; } // in bytes
+    public string FileSizeStr { get; set; } = string.Empty;
 }

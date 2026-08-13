@@ -8,5 +8,7 @@ public class AudioFormatOption
     public double Bitrate { get; set; }                       // kbps
     public string QualityLabel { get; set; } = string.Empty;  // "Low", "Medium", "High"
     public bool IsRecommended { get; set; }
+    public long FileSize { get; set; } // in bytes
+    public string FileSizeStr { get; set; } = string.Empty;
     public string DisplayText => $"{CodecDisplay} ({QualityLabel} @{Bitrate:0}kbps)";
 }

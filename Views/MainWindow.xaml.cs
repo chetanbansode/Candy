@@ -10,8 +10,8 @@ public partial class MainWindow : FluentWindow
         
         if (App.IsPlusVersion)
         {
-            this.Width = 1100;
-            this.Height = 760;
+            this.Width = 950;
+            this.Height = 770;
         }
 
         this.MinWidth = this.Width;

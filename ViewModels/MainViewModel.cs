@@ -46,13 +46,11 @@ public partial class MainViewModel : ObservableObject
         : IsVideoMode 
             ? "Paste the link to the video you want to download" 
             : "Paste the link to the audio you want to download";
-    public string ProcessingText => App.IsPlusVersion
-        ? "Fetching all formats..."
-        : DownloadMode == DownloadMode.Manual
-            ? "Fetching all available formats..."
-            : IsVideoMode 
-                ? "Fetching video formats..." 
-                : "Fetching audio formats...";
+    public string ProcessingText => DownloadMode == DownloadMode.Manual
+        ? (App.IsPlusVersion ? "Fetching all formats..." : "Fetching all available formats...")
+        : IsVideoMode 
+            ? "Fetching video formats..." 
+            : "Fetching audio formats...";
 
     [ObservableProperty] private AppSettings _appSettings = new();
     
@@ -77,6 +75,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _selectedSettingsCategory = "Appearance";
 
     [ObservableProperty] private string _videoUrl = string.Empty;
+    
+    partial void OnVideoUrlChanged(string value)
+    {
+        if (_isAutoPasting) return;
+        ErrorMessage = string.Empty;
+        IsUrlFromClipboard = false;
+    }
+
     [ObservableProperty] private bool _isUrlFromClipboard;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _isDownloading;
@@ -93,6 +99,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private List<AudioFormatOption> _availableQualities = new();
     [ObservableProperty] private AudioFormatOption? _selectedFormat;
     [ObservableProperty] private string _recommendationText = string.Empty;
+    [ObservableProperty] private string _expectedFileSizeLabel = string.Empty;
+    [ObservableProperty] private long _expectedFileSizeBytes;
 
     // Video mode
     [ObservableProperty] private DownloadMode _downloadMode = DownloadMode.Audio;
@@ -128,6 +136,12 @@ public partial class MainViewModel : ObservableObject
     public List<string> ManualFilterOptions { get; } = new() { "All", "Video", "Audio" };
 
     // Remuxer properties
+    public string AppName => App.IsPlusVersion ? "Candy Plus" : "Candy";
+    public string AppVersion => App.IsPlusVersion ? "1.0.1 Beta" : "1.0.1";
+    public string AppDescription => App.IsPlusVersion 
+        ? "An advanced interface for downloading audio and video with manual format selection, remuxing, and advanced options powered by yt-dlp."
+        : "A simple and clean interface for downloading audio and video from YouTube.";
+        
     [ObservableProperty] private bool _isRemuxerEnabled;
     public List<string> RemuxContainers { get; } = new() { "mp4", "mkv", "webm" };
     [ObservableProperty] private string _selectedRemuxContainer = "mp4";
@@ -139,11 +153,13 @@ public partial class MainViewModel : ObservableObject
     private List<AudioFormatOption> _allFormats = new();
     private List<YtDlpGui.Models.VideoFormatOption> _allVideoFormats = new();
     private string _bestAudioFormatId = string.Empty;
-    private YtDlpService _ytDlpService = new();
+    private DownloadService _ytDlpService = new();
     private SettingsService _settingsService = new();
     private CancellationTokenSource? _downloadCts;
     private Stopwatch _stopwatch = new();
     private DispatcherTimer _elapsedTimer;
+    private DateTime _lastProgressUpdateTime = DateTime.Now;
+    private bool _isAutoPasting;
 
     public MainViewModel()
     {
@@ -159,10 +175,14 @@ public partial class MainViewModel : ObservableObject
         _elapsedTimer.Tick += (s, e) => 
         {
             ElapsedTime = $"{_stopwatch.Elapsed.Minutes:D2}:{_stopwatch.Elapsed.Seconds:D2}";
+            if (IsDownloading && (DateTime.Now - _lastProgressUpdateTime).TotalSeconds > 2)
+            {
+                ProgressSpeed = "0 B/s";
+            }
         };
 
         CheckClipboardForUrl();
-
+        _ytDlpService.CleanupOrphanedMeiFolders();
     }
 
     private void CheckClipboardForUrl()
@@ -171,11 +191,13 @@ public partial class MainViewModel : ObservableObject
         {
             if (Clipboard.ContainsText())
             {
-                var text = Clipboard.GetText();
+                var text = Clipboard.GetText().Trim();
                 if (System.Text.RegularExpressions.Regex.IsMatch(text, @"https://(www\.)?(youtube\.com|youtu\.be)"))
                 {
+                    _isAutoPasting = true;
                     VideoUrl = text;
                     IsUrlFromClipboard = true;
+                    _isAutoPasting = false;
                 }
             }
         }
@@ -223,6 +245,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void GoBack()
     {
+        ErrorMessage = string.Empty;
+        
         if (CurrentPage == AppPage.UrlInput)
         {
             CurrentPage = AppPage.Home;
@@ -256,11 +280,13 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task FetchFormats()
     {
-        if (string.IsNullOrWhiteSpace(VideoUrl))
+        if (string.IsNullOrWhiteSpace(VideoUrl) || !VideoUrl.Trim().StartsWith("http", StringComparison.OrdinalIgnoreCase))
         {
-            ErrorMessage = "URL cannot be empty.";
+            ErrorMessage = "Invalid video URL. Please check the link and try again.";
             return;
         }
+
+        ErrorMessage = string.Empty;
 
         CurrentPage = AppPage.Processing;
         IsLoading = true;
@@ -289,6 +315,7 @@ public partial class MainViewModel : ObservableObject
 
                 SelectedContainer = "MP4";
                 AudioQualityDisplay = "Medium (AAC)";
+                UpdateVideoExpectedSize();
                 CurrentPage = AppPage.VideoOptions;
             }
             else if (DownloadMode == DownloadMode.Manual)
@@ -300,6 +327,7 @@ public partial class MainViewModel : ObservableObject
 
                 ManualFormatFilter = "All";
                 ApplyManualFilter();
+                UpdateManualExpectedSize();
                 CurrentPage = AppPage.ManualOptions;
             }
             else
@@ -336,17 +364,7 @@ public partial class MainViewModel : ObservableObject
         UpdateQualitiesForCodec(value);
     }
 
-    partial void OnSelectedResolutionChanged(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return;
 
-        var matchingFormats = _allVideoFormats.Where(f => f.ResolutionLabel == value).ToList();
-        var fpsValues = matchingFormats.Select(f => f.Fps).Distinct().OrderByDescending(f => f).ToList();
-        AvailableFrameRates = fpsValues.Select(f => $"{f}fps").ToList();
-
-        if (AvailableFrameRates.Count > 0)
-            SelectedFrameRate = AvailableFrameRates[0];
-    }
 
     private void UpdateQualitiesForCodec(string codecDisplay)
     {
@@ -364,6 +382,105 @@ public partial class MainViewModel : ObservableObject
         {
             var best = AvailableQualities.OrderByDescending(f => f.Bitrate).First();
             SelectedFormat = best;
+        }
+    }
+
+    partial void OnSelectedResolutionChanged(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        
+        AvailableFrameRates = _allVideoFormats
+            .Where(f => f.ResolutionLabel == value)
+            .Select(f => f.Fps + "fps")
+            .Distinct()
+            .OrderByDescending(f => f)
+            .ToList();
+            
+        if (AvailableFrameRates.Count > 0)
+            SelectedFrameRate = AvailableFrameRates[0];
+            
+        UpdateVideoExpectedSize();
+    }
+    
+    partial void OnSelectedFrameRateChanged(string value)
+    {
+        UpdateVideoExpectedSize();
+    }
+    
+    partial void OnSelectedContainerChanged(string value)
+    {
+        UpdateVideoExpectedSize();
+    }
+    
+    private void UpdateVideoExpectedSize()
+    {
+        if (string.IsNullOrEmpty(SelectedResolution) || string.IsNullOrEmpty(SelectedFrameRate)) return;
+        
+        int selectedHeight = _allVideoFormats
+            .Where(f => f.ResolutionLabel == SelectedResolution)
+            .Select(f => f.Height)
+            .FirstOrDefault();
+        int selectedFps = 30;
+        int.TryParse(SelectedFrameRate.Replace("fps", ""), out selectedFps);
+
+        var candidates = _allVideoFormats
+            .Where(f => f.Height == selectedHeight && f.Fps == selectedFps)
+            .ToList();
+
+        string preferredCodecPrefix = SelectedContainer == "MP4" ? "avc" : "vp";
+        var best = candidates
+            .Where(f => f.Codec.StartsWith(preferredCodecPrefix, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => f.Bitrate)
+            .FirstOrDefault();
+        best ??= candidates.OrderByDescending(f => f.Bitrate).FirstOrDefault();
+
+        if (best != null)
+        {
+            ExpectedFileSizeBytes = best.FileSize;
+            ExpectedFileSizeLabel = best.FileSize > 0 ? $"Approximate Size: {best.FileSizeStr}" : "Approximate Size: Unknown";
+        }
+    }
+    
+    partial void OnSelectedManualFormatChanged(ManualFormatOption? value)
+    {
+        UpdateManualExpectedSize();
+    }
+    partial void OnSelectedVideoFormatChanged(ManualFormatOption? value)
+    {
+        UpdateManualExpectedSize();
+    }
+    partial void OnSelectedAudioFormatChanged(ManualFormatOption? value)
+    {
+        UpdateManualExpectedSize();
+    }
+    partial void OnIsRemuxerEnabledChanged(bool value)
+    {
+        UpdateManualExpectedSize();
+    }
+    
+    private void UpdateManualExpectedSize()
+    {
+        if (IsRemuxerEnabled)
+        {
+            if (SelectedVideoFormat == null && SelectedAudioFormat == null)
+                ExpectedFileSizeBytes = 0;
+            else
+                ExpectedFileSizeBytes = (SelectedVideoFormat?.FileSizeRaw ?? 0) + (SelectedAudioFormat?.FileSizeRaw ?? 0);
+        }
+        else
+        {
+            ExpectedFileSizeBytes = SelectedManualFormat?.FileSizeRaw ?? 0;
+        }
+
+        if (ExpectedFileSizeBytes > 0)
+        {
+            ExpectedFileSizeLabel = ExpectedFileSizeBytes >= 1_073_741_824 ? $"Approximate Size: ~{ExpectedFileSizeBytes / 1_073_741_824.0:F1}GB" :
+                                    ExpectedFileSizeBytes >= 1_048_576 ? $"Approximate Size: ~{ExpectedFileSizeBytes / 1_048_576.0:F1}MB" :
+                                    $"Approximate Size: ~{ExpectedFileSizeBytes / 1024.0:F0}KB";
+        }
+        else
+        {
+            ExpectedFileSizeLabel = string.Empty;
         }
     }
 
@@ -396,6 +513,9 @@ public partial class MainViewModel : ObservableObject
             {
                 RecommendationText = $"{value.CodecDisplay} {value.QualityLabel} selected.";
             }
+            
+            ExpectedFileSizeBytes = value.FileSize;
+            ExpectedFileSizeLabel = value.FileSize > 0 ? $"Approximate Size: {value.FileSizeStr}" : "Approximate Size: Unknown";
         }
     }
 
@@ -486,6 +606,14 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task StartDownload()
     {
+        if (IsDownloading) return;
+
+        if (string.IsNullOrWhiteSpace(VideoUrl) || !VideoUrl.Trim().StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        {
+            ErrorMessage = "Invalid video URL. Please check the link and try again.";
+            return;
+        }
+
         if (DownloadMode == DownloadMode.Audio && SelectedFormat == null) return;
         if (DownloadMode == DownloadMode.Video && string.IsNullOrEmpty(SelectedResolution)) return;
         if (DownloadMode == DownloadMode.Manual)
@@ -493,11 +621,47 @@ public partial class MainViewModel : ObservableObject
             if (IsRemuxerEnabled)
             {
                 if (SelectedVideoFormat == null || SelectedAudioFormat == null) return;
+                ExpectedFileSizeBytes = (SelectedVideoFormat?.FileSizeRaw ?? 0) + (SelectedAudioFormat?.FileSizeRaw ?? 0);
             }
             else
             {
                 if (SelectedManualFormat == null) return;
+                ExpectedFileSizeBytes = SelectedManualFormat?.FileSizeRaw ?? 0;
             }
+            
+            if (ExpectedFileSizeBytes > 0)
+            {
+                ExpectedFileSizeLabel = ExpectedFileSizeBytes >= 1_073_741_824 ? $"Approximate Size: ~{ExpectedFileSizeBytes / 1_073_741_824.0:F1}GB" :
+                                        ExpectedFileSizeBytes >= 1_048_576 ? $"Approximate Size: ~{ExpectedFileSizeBytes / 1_048_576.0:F1}MB" :
+                                        $"Approximate Size: ~{ExpectedFileSizeBytes / 1024.0:F0}KB";
+            }
+            else
+            {
+                ExpectedFileSizeLabel = "Approximate Size: Unknown";
+            }
+        }
+        
+        if (ExpectedFileSizeBytes > 0)
+        {
+            try
+            {
+                var driveRoot = Path.GetPathRoot(Path.GetFullPath(SavePath));
+                if (!string.IsNullOrEmpty(driveRoot))
+                {
+                    var driveInfo = new DriveInfo(driveRoot);
+                    if (driveInfo.IsReady)
+                    {
+                        // Add 10% buffer
+                        long requiredSpace = (long)(ExpectedFileSizeBytes * 1.1);
+                        if (driveInfo.AvailableFreeSpace < requiredSpace)
+                        {
+                            System.Windows.MessageBox.Show($"Not enough disk space on {driveRoot}. Required: ~{requiredSpace / 1048576} MB, Available: {driveInfo.AvailableFreeSpace / 1048576} MB.", "Disk Full", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                            return;
+                        }
+                    }
+                }
+            }
+            catch { }
         }
         
         CurrentPage = AppPage.Downloading;
@@ -506,8 +670,11 @@ public partial class MainViewModel : ObservableObject
         ProgressSpeed = string.Empty;
         ProgressEta = string.Empty;
         ElapsedTime = "00:00";
-        StatusMessage = "Downloading...";
+        StatusMessage = DownloadMode == DownloadMode.Video ? "Downloading Video & Audio Tracks..." : 
+                        DownloadMode == DownloadMode.Audio ? "Downloading Audio..." : 
+                        "Downloading...";
         
+        _lastProgressUpdateTime = DateTime.Now;
         _stopwatch.Restart();
         _elapsedTimer.Start();
         
@@ -518,6 +685,7 @@ public partial class MainViewModel : ObservableObject
             ProgressPercentage = p.Percentage;
             ProgressSpeed = p.SpeedDisplay;
             ProgressEta = p.Eta;
+            _lastProgressUpdateTime = DateTime.Now;
         });
 
         try
@@ -559,7 +727,7 @@ public partial class MainViewModel : ObservableObject
 
                 if (IsRemuxerEnabled)
                 {
-                    if (!YtDlpGui.Services.YtDlpService.IsFFmpegAvailable())
+                    if (!YtDlpGui.Services.DownloadService.IsFFmpegAvailable())
                     {
                         System.Windows.MessageBox.Show("FFmpeg is required to combine video and audio tracks. Please place ffmpeg.exe in the application folder.", "FFmpeg Missing", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
                         return;
@@ -644,16 +812,31 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            ErrorMessage = ex.Message;
             CurrentPage = AppPage.UrlInput;
-
-            if (ex.Message.Contains("(Skipped)"))
+            
+            if (ex is System.IO.IOException || ex is UnauthorizedAccessException || 
+                ex.Message.Contains("Access to the path") || 
+                ex.Message.Contains("used by another process") || 
+                ex.Message.Contains("denied"))
             {
+                ErrorMessage = "";
                 System.Windows.MessageBox.Show(
-                    "The file already exists in the destination folder.", 
-                    "Download Skipped", 
+                    "Cannot overwrite the file as the file is already in use by another app.", 
+                    "File In Use", 
                     System.Windows.MessageBoxButton.OK, 
-                    System.Windows.MessageBoxImage.Information);
+                    System.Windows.MessageBoxImage.Warning);
+            }
+            else
+            {
+                ErrorMessage = ex.Message;
+                if (ex.Message.Contains("(Skipped)"))
+                {
+                    System.Windows.MessageBox.Show(
+                        "The file already exists in the destination folder.", 
+                        "Download Skipped", 
+                        System.Windows.MessageBoxButton.OK, 
+                        System.Windows.MessageBoxImage.Information);
+                }
             }
         }
         finally
@@ -673,9 +856,10 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void CancelDownload()
     {
+        var cts = _downloadCts;
         Task.Run(() => 
         {
-            try { _downloadCts?.Cancel(); } catch { }
+            try { cts?.Cancel(); } catch { }
             try { _ytDlpService.Cancel(); } catch { }
         });
     }

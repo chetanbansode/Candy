@@ -12,12 +12,13 @@
                  ResizeMode="CanResize"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"
-                 Title="Candy"
+                 Title="{Binding AppName, Mode=OneWay}"
                  xmlns:local="clr-namespace:YtDlpGui">
 
     <Window.Resources>
         <cv:BoolToVisibilityConverter x:Key="BoolToVis"/>
         <cv:WidthToHeaderConverter x:Key="WidthToHeader"/>
+        <cv:StringToVisibilityConverter x:Key="StringToVis"/>
 
         <Style x:Key="ToggleListStyle" TargetType="ListBox">
             <Setter Property="Background" Value="Transparent"/>
@@ -111,7 +112,7 @@
         
         <ui:TitleBar Grid.Row="0" ShowMaximize="True">
             <ui:TitleBar.Header>
-                <TextBlock Text="Candy" ToolTip="v1.0.0" WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center" Margin="0,0,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                <TextBlock Text="{Binding AppName, Mode=OneWay}" ToolTip="{Binding AppVersion, StringFormat=v{0}, Mode=OneWay}" WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center" Margin="0,0,0,0" FontSize="12" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
             </ui:TitleBar.Header>
             <ui:TitleBar.Icon>
                 <ui:ImageIcon Source="pack://application:,,,/icons/universal.png" RenderTransformOrigin="0.5,0.5">
@@ -152,7 +153,7 @@
                                             <Setter Property="ToolTip" Value="Available in Candy Plus"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsPlusVersion}" Value="True">
-                                            <Setter Property="ToolTip" Value=""/>
+                                            <Setter Property="ToolTip" Value="{x:Null}"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -176,7 +177,7 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,16"/>
+                <ui:Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Appearance="Transparent" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,16"/>
                 
                 <TextBlock Grid.Row="1" Text="Enter YouTube URL" FontSize="18" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,4"/>
                 <TextBlock Grid.Row="2" Text="{Binding UrlInputSubtitle}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,16"/>
@@ -217,7 +218,7 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,16"/>
+                <ui:Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Appearance="Transparent" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,16"/>
                 
                 <TextBlock Grid.Row="1" Text="Select Audio Format" FontSize="18" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,16"/>
                 
@@ -257,7 +258,10 @@
                     </StackPanel>
                 </ScrollViewer>
                 
-                <Button Grid.Row="4" Command="{Binding StartDownloadCommand}" Content="Start Download" HorizontalAlignment="Stretch" Style="{DynamicResource AccentButtonStyle}" Padding="0,10"/>
+                <StackPanel Grid.Row="4" Margin="0,0,0,10">
+                    <TextBlock Text="{Binding ExpectedFileSizeLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,0,0,8" HorizontalAlignment="Center" Visibility="{Binding ExpectedFileSizeLabel, Converter={StaticResource StringToVis}}"/>
+                    <Button Command="{Binding StartDownloadCommand}" Content="Start Download" HorizontalAlignment="Stretch" Style="{DynamicResource AccentButtonStyle}" Padding="0,10"/>
+                </StackPanel>
             </Grid>
 
             <!-- VIDEO OPTIONS PAGE -->
@@ -269,7 +273,7 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,8"/>
+                <ui:Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Appearance="Transparent" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,8"/>
                 
                 <TextBlock Grid.Row="1" Text="Select Video Format" FontSize="18" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,12"/>
                 
@@ -320,7 +324,10 @@
                     </StackPanel>
                 </ScrollViewer>
                 
-                <Button Grid.Row="3" Command="{Binding StartDownloadCommand}" Content="Start Download" HorizontalAlignment="Stretch" Style="{DynamicResource AccentButtonStyle}" Padding="0,10"/>
+                <StackPanel Grid.Row="3" Margin="0,0,0,10">
+                    <TextBlock Text="{Binding ExpectedFileSizeLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,0,0,8" HorizontalAlignment="Center" Visibility="{Binding ExpectedFileSizeLabel, Converter={StaticResource StringToVis}}"/>
+                    <Button Command="{Binding StartDownloadCommand}" Content="Start Download" HorizontalAlignment="Stretch" Style="{DynamicResource AccentButtonStyle}" Padding="0,10"/>
+                </StackPanel>
             </Grid>
 
             <!-- MANUAL OPTIONS PAGE (Candy Plus) -->
@@ -333,7 +340,7 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,8"/>
+                <ui:Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Appearance="Transparent" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,8"/>
 
                 <Grid Grid.Row="1" Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
@@ -609,7 +616,10 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <Button Grid.Row="4" Command="{Binding StartDownloadCommand}" Content="Start Download" HorizontalAlignment="Stretch" Style="{DynamicResource AccentButtonStyle}" Padding="0,10"/>
+                <StackPanel Grid.Row="4" Margin="0,0,0,10">
+                    <TextBlock Text="{Binding ExpectedFileSizeLabel}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,0,0,8" HorizontalAlignment="Center" Visibility="{Binding ExpectedFileSizeLabel, Converter={StaticResource StringToVis}}"/>
+                    <Button Command="{Binding StartDownloadCommand}" Content="Start Download" HorizontalAlignment="Stretch" Style="{DynamicResource AccentButtonStyle}" Padding="0,10"/>
+                </StackPanel>
             </Grid>
 
             <!-- DOWNLOADING PAGE -->
@@ -619,7 +629,7 @@
                 <ProgressBar Value="{Binding ProgressPercentage}" Maximum="100" Height="12" Margin="0,0,0,8"/>
                 
                 <Grid Margin="0,0,0,16">
-                    <TextBlock Text="{Binding ProgressPercentage, StringFormat={}{0:0.0}%}" HorizontalAlignment="Left" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                    <TextBlock Text="{Binding ProgressPercentage, StringFormat={}{0:0}%}" HorizontalAlignment="Left" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                     <TextBlock Text="{Binding ProgressSpeed}" HorizontalAlignment="Right" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                 </Grid>
                 
@@ -657,7 +667,7 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,16"/>
+                <ui:Button Grid.Row="0" Command="{Binding GoBackCommand}" Content="← Back" HorizontalAlignment="Left" Appearance="Transparent" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="-8,0,0,16"/>
 
                 <TextBlock Grid.Row="1" Text="Preferences" FontSize="24" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="SemiBold" Margin="0,0,0,24"/>
                 
@@ -833,15 +843,18 @@
                                     </Style>
                                 </StackPanel.Style>
                                 <StackPanel Margin="0,0,0,24">
-                                    <TextBlock Text="Candy" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4"/>
-                                    <TextBlock Text="Version: 1.0.0 Beta" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,16"/>
-                                    
-                                    <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,24" MaxWidth="400" HorizontalAlignment="Left">
-                                        <Run Text="A simple and clean interface for downloading audio and video with advanced options from YouTube."/>
-                                        <LineBreak/>
-                                        <LineBreak/>
-                                        <Run Text="Built with C#, .NET 8, and yt-dlp"/>
+                                    <TextBlock FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,4">
+                                        <Run Text="{Binding AppName, Mode=OneWay}"/>
                                     </TextBlock>
+                                    <TextBlock Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,16">
+                                        <Run Text="Version: "/>
+                                        <Run Text="{Binding AppVersion, Mode=OneWay}"/>
+                                    </TextBlock>
+                                    
+                                    <TextBlock Text="{Binding AppDescription, Mode=OneWay}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,24" MaxWidth="400" HorizontalAlignment="Left">
+                                    </TextBlock>
+                                    
+                                    <TextBlock Text="Built with C#, .NET 8, and yt-dlp" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,24"/>
                                     
                                     <TextBlock Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,8">
                                         <Run Text="© Chetan Bansode"/>

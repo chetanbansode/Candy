@@ -9,6 +9,7 @@ public class ManualFormatOption
     public string Codec { get; set; } = string.Empty;           // e.g. "avc1", "opus", "vp9"
     public double Bitrate { get; set; }                          // kbps
     public string FileSize { get; set; } = string.Empty;        // e.g. "~50MB"
+    public long FileSizeRaw { get; set; }                       // in bytes
     public string Type { get; set; } = string.Empty;            // "video", "audio", "video+audio"
     public string Note { get; set; } = string.Empty;            // e.g. "DASH video", "Default"
     public bool IsSelected { get; set; }
