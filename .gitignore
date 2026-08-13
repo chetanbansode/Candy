@@ -11,3 +11,8 @@ dump.json
 
 # Binaries (these are huge and shouldn't be in Git)
 *.exe
+
+# Excluded by user
+setup.iss
+setup_plus.iss
+perfect_logo.png
