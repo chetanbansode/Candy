@@ -1,0 +1,13 @@
+# Build folders
+bin/
+obj/
+
+# Log files and crash dumps
+crash.log
+crash.txt
+stderr.txt
+stdout.txt
+dump.json
+
+# Binaries (these are huge and shouldn't be in Git)
+*.exe
