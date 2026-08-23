@@ -72,11 +72,29 @@ public class DownloadService
         var ffmpegPath = GetExecutablePath("ffmpeg.exe"); 
         string ffmpegArg = ffmpegPath != "ffmpeg.exe" ? $" --ffmpeg-location \"{Path.GetDirectoryName(ffmpegPath)}\"" : "";
         string proxyArg = !string.IsNullOrWhiteSpace(settings.ProxyUrl) ? $" --proxy \"{settings.ProxyUrl}\"" : "";
+        string cookiesArg = "";
+
+        var toolsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tools");
+        var jsonFile = Path.Combine(toolsPath, "proxy.json");
+        if (File.Exists(jsonFile))
+        {
+            var content = File.ReadAllText(jsonFile);
+            var pd = System.Text.Json.JsonSerializer.Deserialize<YtDlpGui.Models.ProxyData>(content);
+            if (pd != null && pd.IsEnabled && !string.IsNullOrWhiteSpace(pd.Url))
+            {
+                proxyArg = $" --proxy \"{pd.Url}\"";
+            }
+        }
+
+        if (DependencyService.EnsureDenoTask != null)
+        {
+            await DependencyService.EnsureDenoTask;
+        }
 
         var startInfo = new ProcessStartInfo
         {
             FileName = ytDlpPath,
-            Arguments = $"--dump-json --no-playlist --no-warnings{ffmpegArg}{proxyArg} \"{url}\"",
+            Arguments = $"--dump-json --no-playlist --no-warnings{ffmpegArg}{proxyArg}{cookiesArg} \"{url}\"",
             CreateNoWindow = true,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -203,6 +221,8 @@ public class DownloadService
                         fileSize = fsProp.GetInt64();
                     else if (format.TryGetProperty("filesize_approx", out var fsaProp) && fsaProp.ValueKind == JsonValueKind.Number)
                         fileSize = fsaProp.GetInt64();
+                    else if (bitrate > 0 && root.TryGetProperty("duration", out var durProp) && durProp.ValueKind == JsonValueKind.Number)
+                        fileSize = (long)(bitrate * 1000 / 8 * durProp.GetDouble());
 
                     string fileSizeStr = "";
                     if (fileSize > 0)
@@ -315,6 +335,8 @@ public class DownloadService
                         fileSize = fsProp.GetInt64();
                     else if (format.TryGetProperty("filesize_approx", out var fsaProp) && fsaProp.ValueKind == JsonValueKind.Number)
                         fileSize = fsaProp.GetInt64();
+                    else if (bitrate > 0 && root.TryGetProperty("duration", out var durProp) && durProp.ValueKind == JsonValueKind.Number)
+                        fileSize = (long)(bitrate * 1000 / 8 * durProp.GetDouble());
 
                     string fileSizeStr = "";
                     if (fileSize > 0)
@@ -440,20 +462,17 @@ public class DownloadService
                 string fileSize = "";
                 long fileSizeRaw = 0;
                 if (format.TryGetProperty("filesize", out var fsProp) && fsProp.ValueKind == JsonValueKind.Number)
-                {
-                    var bytes = fsProp.GetInt64();
-                    fileSizeRaw = bytes;
-                    fileSize = bytes >= 1_073_741_824 ? $"~{bytes / 1_073_741_824.0:F1}GB" :
-                               bytes >= 1_048_576 ? $"~{bytes / 1_048_576.0:F1}MB" :
-                               $"~{bytes / 1024.0:F0}KB";
-                }
+                    fileSizeRaw = fsProp.GetInt64();
                 else if (format.TryGetProperty("filesize_approx", out var fsaProp) && fsaProp.ValueKind == JsonValueKind.Number)
+                    fileSizeRaw = fsaProp.GetInt64();
+                else if (bitrate > 0 && root.TryGetProperty("duration", out var durProp) && durProp.ValueKind == JsonValueKind.Number)
+                    fileSizeRaw = (long)(bitrate * 1000 / 8 * durProp.GetDouble());
+
+                if (fileSizeRaw > 0)
                 {
-                    var bytes = fsaProp.GetInt64();
-                    fileSizeRaw = bytes;
-                    fileSize = bytes >= 1_073_741_824 ? $"~{bytes / 1_073_741_824.0:F1}GB" :
-                               bytes >= 1_048_576 ? $"~{bytes / 1_048_576.0:F1}MB" :
-                               $"~{bytes / 1024.0:F0}KB";
+                    fileSize = fileSizeRaw >= 1_073_741_824 ? $"~{fileSizeRaw / 1_073_741_824.0:F1}GB" :
+                               fileSizeRaw >= 1_048_576 ? $"~{fileSizeRaw / 1_048_576.0:F1}MB" :
+                               $"~{fileSizeRaw / 1024.0:F0}KB";
                 }
 
                 // Note
@@ -535,7 +554,7 @@ public class DownloadService
                 try { stderrOutput = await _currentProcess.StandardError.ReadToEndAsync(); } catch { }
             });
 
-            var regex = new Regex(@"\[download\]\s+([\d.]+)%\s+of\s+\S+\s+at\s+([\d.]+)(\w+)/s\s+ETA\s+(\S+)");
+            var regex = new Regex(@"\[download\]\s+([\d.]+)%\s+of\s+(?:~\s+)?\S+\s+at\s+([\d.]+)(\w+)/s\s+ETA\s+(\S+)");
             var extractingRegex = new Regex(@"\[ExtractAudio\]");
             var destRegex = new Regex(@"\[(?:download|ExtractAudio|Merger)\] (?:Destination: |Merging formats into "")([^""]+)");
 
@@ -569,6 +588,13 @@ public class DownloadService
                             else if (unit.Equals("MiB", StringComparison.OrdinalIgnoreCase)) speedBytes *= 1024 * 1024;
                             else if (unit.Equals("GiB", StringComparison.OrdinalIgnoreCase)) speedBytes *= 1024 * 1024 * 1024;
 
+                            // For HLS/fragment downloads, use fragment progress instead of per-fragment %
+                            var fragMatch = System.Text.RegularExpressions.Regex.Match(line, @"\(frag\s+(\d+)/(\d+)\)");
+                            if (fragMatch.Success && int.TryParse(fragMatch.Groups[1].Value, out int currentFrag) && int.TryParse(fragMatch.Groups[2].Value, out int totalFrag) && totalFrag > 0)
+                            {
+                                percent = (double)currentFrag / totalFrag * 100.0;
+                            }
+
                             progress?.Report(new DownloadProgress
                             {
                                 Percentage = percent,
@@ -578,21 +604,11 @@ public class DownloadService
                             });
                         }
                     }
-                    else if (line.Contains("[download] 100%"))
+                    else if (extractingRegex.IsMatch(line) || line.Contains("Post-process") || line.Contains("[Merger]"))
                     {
                         progress?.Report(new DownloadProgress
                         {
-                            Percentage = 100,
-                            SpeedBytesPerSec = 0,
-                            Eta = "00:00",
-                            Status = "downloading"
-                        });
-                    }
-                    else if (extractingRegex.IsMatch(line) || line.Contains("Post-process") || line.Contains("Destination:") || line.Contains("[Merger]"))
-                    {
-                        progress?.Report(new DownloadProgress
-                        {
-                            Percentage = 100,
+                            Percentage = 99,
                             SpeedBytesPerSec = 0,
                             Eta = "00:00",
                             Status = "postprocessing"
@@ -699,8 +715,11 @@ public class DownloadService
         if (lowerError.Contains("region") || lowerError.Contains("country") || lowerError.Contains("private video") || lowerError.Contains("video unavailable"))
             return "This video is unavailable. It might be private, deleted, or region-restricted.";
             
-        if (lowerError.Contains("sign in to confirm") || lowerError.Contains("bot") || lowerError.Contains("429"))
-            return "YouTube blocked the request (likely anti-bot protection). Please try again later.";
+        if (lowerError.Contains("sign in to confirm") || lowerError.Contains("bot") || lowerError.Contains("429") || lowerError.Contains("sign in to access"))
+            return "YouTube blocked the request (likely anti-bot protection). Please try again later or use a valid cookies.txt file.";
+
+        if (lowerError.Contains("could not copy") && lowerError.Contains("cookie database"))
+            return "Your browser's cookie database is locked. Please close your browser completely or use a standalone cookies.txt file.";
 
         if (lowerError.Contains("no space left on device") || lowerError.Contains("not enough space"))
             return "Not enough disk space to download this video.";
@@ -772,7 +791,7 @@ public class DownloadService
                 try { stderrOutput = await _currentProcess.StandardError.ReadToEndAsync(); } catch { }
             });
 
-            var regex = new Regex(@"\[download\]\s+([\d.]+)%\s+of\s+\S+\s+at\s+([\d.]+)(\w+)/s\s+ETA\s+(\S+)");
+            var regex = new Regex(@"\[download\]\s+([\d.]+)%\s+of\s+(?:~\s+)?\S+\s+at\s+([\d.]+)(\w+)/s\s+ETA\s+(\S+)");
             var extractingRegex = new Regex(@"\[ExtractAudio\]");
             var destRegex = new Regex(@"\[(?:download|ExtractAudio|Merger)\] (?:Destination: |Merging formats into "")([^""]+)");
 
@@ -807,6 +826,12 @@ public class DownloadService
                             else if (unit.Equals("MiB", StringComparison.OrdinalIgnoreCase)) speedBytes *= 1024 * 1024;
                             else if (unit.Equals("GiB", StringComparison.OrdinalIgnoreCase)) speedBytes *= 1024 * 1024 * 1024;
 
+                            var fragMatch = System.Text.RegularExpressions.Regex.Match(line, @"\(frag\s+(\d+)/(\d+)\)");
+                            if (fragMatch.Success && int.TryParse(fragMatch.Groups[1].Value, out int currentFrag) && int.TryParse(fragMatch.Groups[2].Value, out int totalFrag) && totalFrag > 0)
+                            {
+                                percent = (double)currentFrag / totalFrag * 100.0;
+                            }
+
                             progress?.Report(new DownloadProgress
                             {
                                 Percentage = percent,
@@ -816,21 +841,11 @@ public class DownloadService
                             });
                         }
                     }
-                    else if (line.Contains("[download] 100%"))
+                    else if (extractingRegex.IsMatch(line) || line.Contains("Post-process"))
                     {
                         progress?.Report(new DownloadProgress
                         {
-                            Percentage = 100,
-                            SpeedBytesPerSec = 0,
-                            Eta = "00:00",
-                            Status = "downloading"
-                        });
-                    }
-                    else if (extractingRegex.IsMatch(line) || line.Contains("Post-process") || line.Contains("Destination:"))
-                    {
-                        progress?.Report(new DownloadProgress
-                        {
-                            Percentage = 100,
+                            Percentage = 99,
                             SpeedBytesPerSec = 0,
                             Eta = "00:00",
                             Status = "postprocessing"
@@ -927,7 +942,7 @@ public class DownloadService
         }
     }
 
-    public async Task DownloadManualAsync(string url, string formatSelection, string outputPath, string? proxyUrl, string? cookiesFilePath, bool useCookies, bool embedSubtitles, string? extraArguments, IProgress<DownloadProgress> progress, CancellationToken cancellationToken)
+    public async Task DownloadManualAsync(string url, string formatSelection, string outputPath, string? proxyUrl, string? cookiesFilePath, bool embedSubtitles, string? extraArguments, IProgress<DownloadProgress> progress, CancellationToken cancellationToken)
     {
         var settings = new SettingsService().Load();
 
@@ -950,8 +965,14 @@ public class DownloadService
             args += $" --proxy \"{proxyUrl}\"";
 
         // Cookies
-        if (useCookies && !string.IsNullOrWhiteSpace(cookiesFilePath) && File.Exists(cookiesFilePath))
+        if (!string.IsNullOrWhiteSpace(cookiesFilePath) && File.Exists(cookiesFilePath))
+        {
             args += $" --cookies \"{cookiesFilePath}\"";
+        }
+        else
+        {
+            args += " --client ANDROID";
+        }
 
         // Subtitles (creator-uploaded only, not auto-generated)
         if (embedSubtitles)
@@ -992,7 +1013,7 @@ public class DownloadService
                 try { stderrOutput = await _currentProcess.StandardError.ReadToEndAsync(); } catch { }
             });
 
-            var regex = new Regex(@"\[download\]\s+([\d.]+)%\s+of\s+\S+\s+at\s+([\d.]+)(\w+)/s\s+ETA\s+(\S+)");
+            var regex = new Regex(@"\[download\]\s+([\d.]+)%\s+of\s+(?:~\s+)?\S+\s+at\s+([\d.]+)(\w+)/s\s+ETA\s+(\S+)");
 
             await Task.Run(async () =>
             {
@@ -1015,6 +1036,12 @@ public class DownloadService
                             else if (unit.Equals("MiB", StringComparison.OrdinalIgnoreCase)) speedBytes *= 1024 * 1024;
                             else if (unit.Equals("GiB", StringComparison.OrdinalIgnoreCase)) speedBytes *= 1024 * 1024 * 1024;
 
+                            var fragMatch = System.Text.RegularExpressions.Regex.Match(line, @"\(frag\s+(\d+)/(\d+)\)");
+                            if (fragMatch.Success && int.TryParse(fragMatch.Groups[1].Value, out int currentFrag) && int.TryParse(fragMatch.Groups[2].Value, out int totalFrag) && totalFrag > 0)
+                            {
+                                percent = (double)currentFrag / totalFrag * 100.0;
+                            }
+
                             progress?.Report(new DownloadProgress
                             {
                                 Percentage = percent,
@@ -1024,21 +1051,11 @@ public class DownloadService
                             });
                         }
                     }
-                    else if (line.Contains("[download] 100%"))
-                    {
-                        progress?.Report(new DownloadProgress
-                        {
-                            Percentage = 100,
-                            SpeedBytesPerSec = 0,
-                            Eta = "00:00",
-                            Status = "downloading"
-                        });
-                    }
                     else if (line.Contains("Post-process") || line.Contains("[Merger]") || line.Contains("[ExtractAudio]"))
                     {
                         progress?.Report(new DownloadProgress
                         {
-                            Percentage = 100,
+                            Percentage = 99,
                             SpeedBytesPerSec = 0,
                             Eta = "00:00",
                             Status = "postprocessing"
