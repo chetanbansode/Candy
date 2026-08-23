@@ -18,4 +18,8 @@ public partial class AppSettings : ObservableObject
     [ObservableProperty] private string _proxyUrl = string.Empty;
     [ObservableProperty] private string _cookiesFilePath = string.Empty;
     [ObservableProperty] private bool _enableArgumentInjection = false;
+    
+    // Auth settings
+    [ObservableProperty] private string _authMode = "Anonymous"; // Anonymous, Browser
+    [ObservableProperty] private string _selectedBrowser = "Edge"; // Edge, Chrome, Brave, Firefox, Opera, Vivaldi, Safari
 }
