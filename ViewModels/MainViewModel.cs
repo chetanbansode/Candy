@@ -63,9 +63,12 @@ public partial class MainViewModel : ObservableObject
 
     
     public List<string> ThemeOptions { get; } = new() { "Dark", "Light", "System" };
-    public List<string> FileExistsOptions { get; } = new() { "Overwrite", "Auto-Rename" };
+    public List<string> FileExistsOptions { get; } = new() { "Overwrite", "Auto-Rename", "Skip" };
     public List<string> AudioConversionOptions { get; } = new() { "Native", "MP3", "FLAC" };
     public List<string> SpeedLimitOptions { get; } = new() { "No Limit", "2MB/s", "5MB/s", "10MB/s" };
+    public List<string> AuthModeOptions { get; } = new() { "Anonymous", "Browser" };
+    public List<string> BrowserOptions { get; } = new() { "Edge", "Chrome", "Brave", "Firefox", "Opera", "Vivaldi", "Safari" };
+
     public List<string> ContainerOptions { get; } = new() { "MP4", "MKV" };
 
     public List<string> SettingsCategories { get; } = App.IsPlusVersion
@@ -75,15 +78,6 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _selectedSettingsCategory = "Appearance";
 
     [ObservableProperty] private string _videoUrl = string.Empty;
-    
-    [ObservableProperty] private string _previewTitle = string.Empty;
-    [ObservableProperty] private string _previewThumbnailUrl = string.Empty;
-    [ObservableProperty] private string _previewUploader = string.Empty;
-    [ObservableProperty] private string _previewDuration = string.Empty;
-    [ObservableProperty] private bool _isPreviewAvailable;
-    [ObservableProperty] private bool _isPreviewLoading;
-
-    private CancellationTokenSource? _previewCts;
 
     partial void OnVideoUrlChanged(string value)
     {
@@ -92,54 +86,8 @@ public partial class MainViewModel : ObservableObject
             ErrorMessage = string.Empty;
             IsUrlFromClipboard = false;
         }
-        
-        IsPreviewAvailable = false;
-        PreviewTitle = string.Empty;
-        PreviewThumbnailUrl = string.Empty;
-        PreviewUploader = string.Empty;
-        PreviewDuration = string.Empty;
-        
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            _previewCts?.Cancel();
-            IsPreviewLoading = false;
-            return;
-        }
-
-        _ = TriggerPreviewFetchAsync(value);
+        _fetchCts?.Cancel();
     }
-
-    private async Task TriggerPreviewFetchAsync(string url)
-    {
-        _previewCts?.Cancel();
-        _previewCts = new CancellationTokenSource();
-        var token = _previewCts.Token;
-
-        try
-        {
-            await Task.Delay(400, token); // Debounce
-            IsPreviewLoading = true;
-            
-            var info = await _ytDlpService.GetVideoPreviewAsync(url, token);
-            if (token.IsCancellationRequested) return;
-
-            if (info != null)
-            {
-                PreviewTitle = info.Title;
-                PreviewThumbnailUrl = info.ThumbnailUrl;
-                PreviewUploader = info.Uploader;
-                PreviewDuration = info.Duration;
-                IsPreviewAvailable = true;
-            }
-        }
-        catch (OperationCanceledException) { }
-        finally
-        {
-            if (!token.IsCancellationRequested)
-                IsPreviewLoading = false;
-        }
-    }
-
     [ObservableProperty] private bool _isUrlFromClipboard;
     [ObservableProperty] private bool _isLoading;
     [ObservableProperty] private bool _isDownloading;
@@ -188,7 +136,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private ManualFormatOption? _selectedVideoFormat;
     [ObservableProperty] private ManualFormatOption? _selectedAudioFormat;
     [ObservableProperty] private string _manualFormatFilter = "All";
-    [ObservableProperty] private bool _useCookies;
+
     [ObservableProperty] private bool _embedSubtitles;
     [ObservableProperty] private string _manualArguments = string.Empty;
     [ObservableProperty] private bool _isManualMode;
@@ -222,6 +170,7 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        YtDlpGui.Services.DependencyService.Initialize();
         AppSettings = _settingsService.Load();
         
         SavePath = string.IsNullOrWhiteSpace(AppSettings.DefaultAudioPath) 
@@ -251,7 +200,7 @@ public partial class MainViewModel : ObservableObject
             if (Clipboard.ContainsText())
             {
                 var text = Clipboard.GetText().Trim();
-                if (System.Text.RegularExpressions.Regex.IsMatch(text, @"https://(www\.)?(youtube\.com|youtu\.be)"))
+                if (System.Text.RegularExpressions.Regex.IsMatch(text, @"https://(www\.|m\.|music\.)?(youtube\.com|youtu\.be)"))
                 {
                     _isAutoPasting = true;
                     VideoUrl = text;
@@ -357,21 +306,22 @@ public partial class MainViewModel : ObservableObject
 
         ErrorMessage = string.Empty;
 
-        CurrentPage = AppPage.Processing;
-        IsLoading = true;
-        ErrorMessage = string.Empty;
-
         _fetchCts = new CancellationTokenSource();
         var token = _fetchCts.Token;
 
         try
         {
+            CurrentPage = AppPage.Processing;
+
+            var vidResult = await _ytDlpService.GetVideoFormatsAsync(VideoUrl, token);
+            _allVideoFormats = vidResult.VideoFormats;
+            _bestAudioFormatId = vidResult.BestAudioFormatId;
+            
+            _allManualFormats = await _ytDlpService.GetAllFormatsAsync(VideoUrl, token);
+            _allFormats = await _ytDlpService.GetAudioFormatsAsync(VideoUrl, token);
+
             if (DownloadMode == DownloadMode.Video)
             {
-                var result = await _ytDlpService.GetVideoFormatsAsync(VideoUrl, token);
-                _allVideoFormats = result.VideoFormats;
-                _bestAudioFormatId = result.BestAudioFormatId;
-
                 if (_allVideoFormats.Count == 0)
                     throw new Exception("No video formats found for this URL.");
 
@@ -392,8 +342,6 @@ public partial class MainViewModel : ObservableObject
             }
             else if (DownloadMode == DownloadMode.Manual)
             {
-                _allManualFormats = await _ytDlpService.GetAllFormatsAsync(VideoUrl, token);
-
                 if (_allManualFormats.Count == 0)
                     throw new Exception("No formats found for this URL.");
 
@@ -404,8 +352,6 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                _allFormats = await _ytDlpService.GetAudioFormatsAsync(VideoUrl, token);
-
                 if (_allFormats.Count == 0)
                     throw new Exception("No audio formats found for this URL.");
 
@@ -422,12 +368,10 @@ public partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            // Cancelled by user, CancelFetching handles UI state
+            // Cancelled by user
         }
         catch (Exception ex)
         {
-            if (token.IsCancellationRequested) return;
-
             ErrorMessage = ex.Message;
             CurrentPage = AppPage.UrlInput;
         }
@@ -492,6 +436,7 @@ public partial class MainViewModel : ObservableObject
     
     private void UpdateVideoExpectedSize()
     {
+        if (DownloadMode != DownloadMode.Video) return;
         if (string.IsNullOrEmpty(SelectedResolution) || string.IsNullOrEmpty(SelectedFrameRate)) return;
         
         int selectedHeight = _allVideoFormats
@@ -501,9 +446,18 @@ public partial class MainViewModel : ObservableObject
         int selectedFps = 30;
         int.TryParse(SelectedFrameRate.Replace("fps", ""), out selectedFps);
 
+        // Try exact height + fps match first
         var candidates = _allVideoFormats
             .Where(f => f.Height == selectedHeight && f.Fps == selectedFps)
             .ToList();
+
+        // Fallback: if no exact fps match, use all formats at this height
+        if (candidates.Count == 0)
+        {
+            candidates = _allVideoFormats
+                .Where(f => f.Height == selectedHeight)
+                .ToList();
+        }
 
         string preferredCodecPrefix = SelectedContainer == "MP4" ? "avc" : "vp";
         var best = candidates
@@ -516,6 +470,11 @@ public partial class MainViewModel : ObservableObject
         {
             ExpectedFileSizeBytes = best.FileSize;
             ExpectedFileSizeLabel = best.FileSize > 0 ? $"Approximate Size: {best.FileSizeStr}" : "Approximate Size: Unknown";
+        }
+        else
+        {
+            ExpectedFileSizeBytes = 0;
+            ExpectedFileSizeLabel = "Approximate Size: Unknown";
         }
     }
     
@@ -538,6 +497,7 @@ public partial class MainViewModel : ObservableObject
     
     private void UpdateManualExpectedSize()
     {
+        if (DownloadMode != DownloadMode.Manual) return;
         if (IsRemuxerEnabled)
         {
             if (SelectedVideoFormat == null && SelectedAudioFormat == null)
@@ -581,6 +541,7 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnSelectedFormatChanged(AudioFormatOption? value)
     {
+        if (DownloadMode != DownloadMode.Audio) return;
         if (value != null)
         {
             if (value.IsRecommended)
@@ -758,9 +719,22 @@ public partial class MainViewModel : ObservableObject
         
         _downloadCts = new CancellationTokenSource();
         
+        double displayedProgress = 0;
+
         var progress = new Progress<DownloadProgress>(p => 
         {
-            ProgressPercentage = p.Percentage;
+            double newProgress = p.Percentage;
+
+            // Only allow progress to move forward, never backwards
+            // (yt-dlp resets to 0% when starting audio track after video)
+            if (newProgress > displayedProgress)
+                displayedProgress = newProgress;
+
+            // Only show 100% when truly finished
+            if (p.Status == "finished")
+                displayedProgress = 100;
+
+            ProgressPercentage = displayedProgress;
             ProgressSpeed = p.SpeedDisplay;
             ProgressEta = p.Eta;
             _lastProgressUpdateTime = DateTime.Now;
@@ -782,6 +756,14 @@ public partial class MainViewModel : ObservableObject
                 var candidates = _allVideoFormats
                     .Where(f => f.Height == selectedHeight && f.Fps == selectedFps)
                     .ToList();
+
+                // Fallback: if no exact fps match, use all formats at this height
+                if (candidates.Count == 0)
+                {
+                    candidates = _allVideoFormats
+                        .Where(f => f.Height == selectedHeight)
+                        .ToList();
+                }
 
                 // Prefer codec based on container
                 string preferredCodecPrefix = SelectedContainer == "MP4" ? "avc" : "vp";
@@ -865,7 +847,7 @@ public partial class MainViewModel : ObservableObject
 
                 await _ytDlpService.DownloadManualAsync(
                     VideoUrl, formatId, SavePath,
-                    proxyUrl, cookiesPath, UseCookies, EmbedSubtitles,
+                    proxyUrl, cookiesPath, EmbedSubtitles,
                     extraArgs, progress, _downloadCts.Token);
             }
             else
