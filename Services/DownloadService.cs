@@ -969,10 +969,6 @@ public class DownloadService
         {
             args += $" --cookies \"{cookiesFilePath}\"";
         }
-        else
-        {
-            args += " --client ANDROID";
-        }
 
         // Subtitles (creator-uploaded only, not auto-generated)
         if (embedSubtitles)
