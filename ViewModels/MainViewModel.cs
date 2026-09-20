@@ -720,15 +720,39 @@ public partial class MainViewModel : ObservableObject
         _downloadCts = new CancellationTokenSource();
         
         double displayedProgress = 0;
+        int downloadPhase = 0;
+        double lastRawPercent = 0;
+        bool isMultiFile = DownloadMode == DownloadMode.Video;
 
         var progress = new Progress<DownloadProgress>(p => 
         {
-            double newProgress = p.Percentage;
+            double rawPercent = p.Percentage;
 
-            // Only allow progress to move forward, never backwards
-            // (yt-dlp resets to 0% when starting audio track after video)
-            if (newProgress > displayedProgress)
-                displayedProgress = newProgress;
+            // Detect new download phase (audio starting after video)
+            // When progress drops from near-100% back to near-0%, a new file started
+            if (rawPercent < 10 && lastRawPercent > 90 && downloadPhase == 0 && isMultiFile)
+            {
+                downloadPhase = 1;
+            }
+            lastRawPercent = rawPercent;
+
+            // Map progress: video = 0-90%, audio = 90-99%, single-file = 0-99%
+            double mapped;
+            if (isMultiFile)
+            {
+                if (downloadPhase == 0)
+                    mapped = rawPercent * 0.90;          // Video: 0% -> 0%, 100% -> 90%
+                else
+                    mapped = 90 + rawPercent * 0.09;     // Audio: 0% -> 90%, 100% -> 99%
+            }
+            else
+            {
+                mapped = rawPercent * 0.99;              // Single file: 0% -> 0%, 100% -> 99%
+            }
+
+            // Only allow progress to move forward
+            if (mapped > displayedProgress)
+                displayedProgress = mapped;
 
             // Only show 100% when truly finished
             if (p.Status == "finished")
